@@ -153,13 +153,41 @@ def build_pdf(week_label):
 
     GOLD  = HexColor("#c9a84c"); DARK = HexColor("#1a1a1a")
     WHITE = HexColor("#ffffff"); RED  = HexColor("#cc3333")
+
+    # Cell background colors (light pastel)
     SHIFT_COLORS = {
-        "Day": HexColor("#e8f5ee"), "Day Closer": HexColor("#fff3e0"),
-        "Day Trainee": HexColor("#e8f8ff"),
-        "Evening": HexColor("#e8eaf6"),
-        "Evening Closer 1": HexColor("#fce4ec"), "Evening Closer 2": HexColor("#fce4ec"),
+        "Day":               HexColor("#e8f5ee"),
+        "Day Closer":        HexColor("#fff3e0"),
+        "Day Trainee":       HexColor("#e8f8ff"),
+        "Evening":           HexColor("#e8eaf6"),
+        "Evening Closer 1":  HexColor("#fce4ec"),
+        "Evening Closer 2":  HexColor("#fce4ec"),
         "Evening Bartender": HexColor("#f3e5f5"),
-        "Evening Trainee": HexColor("#e0f7fa"),
+        "Evening Trainee":   HexColor("#e0f7fa"),
+    }
+
+    # Title label colors (darker, readable on pastel bg)
+    SHIFT_TITLE_COLORS = {
+        "Day":               HexColor("#1b5e20"),  # deep green
+        "Day Closer":        HexColor("#e65100"),  # deep orange
+        "Day Trainee":       HexColor("#0d47a1"),  # deep blue
+        "Evening":           HexColor("#4a148c"),  # deep purple
+        "Evening Closer 1":  HexColor("#880e4f"),  # deep pink
+        "Evening Closer 2":  HexColor("#880e4f"),  # deep pink
+        "Evening Bartender": HexColor("#6a1b9a"),  # violet
+        "Evening Trainee":   HexColor("#006064"),  # teal
+    }
+
+    # Left border accent colors
+    SHIFT_ACCENT_COLORS = {
+        "Day":               HexColor("#4caf50"),  # green
+        "Day Closer":        HexColor("#ff9800"),  # orange
+        "Day Trainee":       HexColor("#2196f3"),  # blue
+        "Evening":           HexColor("#7c4dff"),  # purple
+        "Evening Closer 1":  HexColor("#e91e63"),  # pink
+        "Evening Closer 2":  HexColor("#e91e63"),  # pink
+        "Evening Bartender": HexColor("#9c27b0"),  # violet
+        "Evening Trainee":   HexColor("#00bcd4"),  # teal
     }
 
     c.setFillColor(DARK); c.rect(0, H-55, W, 55, fill=1, stroke=0)
@@ -182,18 +210,31 @@ def build_pdf(week_label):
         c.drawCentredString(x+COL_W/2, TOP-ROW_H+ROW_H*0.35, day[:3].upper())
 
     for si, shift in enumerate(SHIFTS):
-        row_y = TOP - ROW_H - (si+1)*ROW_H
+        row_y      = TOP - ROW_H - (si+1)*ROW_H
+        accent     = SHIFT_ACCENT_COLORS.get(shift, HexColor("#999999"))
+        title_clr  = SHIFT_TITLE_COLORS.get(shift, HexColor("#333333"))
+
         for di, day in enumerate(DAYS):
             x        = MARGIN + di*COL_W
             assigned = schedule[day][shift]
             req      = REQUIRED.get(shift, 1)
             is_under = len(assigned) < req
             bg = HexColor("#ffe8e8") if is_under else SHIFT_COLORS.get(shift, HexColor("#f5f5f5"))
-            c.setFillColor(bg); c.setStrokeColor(HexColor("#cccccc")); c.setLineWidth(0.5)
+
+            # Cell background
+            c.setFillColor(bg); c.setStrokeColor(HexColor("#dddddd")); c.setLineWidth(0.4)
             c.rect(x, row_y, COL_W, ROW_H, fill=1, stroke=1)
+
+            # Colored left accent strip
+            c.setFillColor(accent)
+            c.rect(x, row_y, 3, ROW_H, fill=1, stroke=0)
+
+            # Shift label on first column — colored title
             if di == 0:
-                c.setFillColor(HexColor("#444444")); c.setFont("Helvetica-Bold", 7)
-                c.drawString(x+3, row_y+ROW_H-10, shift)
+                c.setFillColor(title_clr); c.setFont("Helvetica-Bold", 7)
+                c.drawString(x+6, row_y+ROW_H-10, shift)
+
+            # Staff names
             if assigned:
                 c.setFillColor(DARK); c.setFont("Helvetica", 7.5)
                 for ni, name in enumerate(assigned):
@@ -201,10 +242,11 @@ def build_pdf(week_label):
                     if ny > row_y + 2:
                         parts = name.split()
                         short = f"{parts[0]} {parts[-1][0]}." if len(parts) > 1 else name
-                        c.drawString(x+4, ny, short)
+                        c.drawString(x+6, ny, short)
             else:
                 c.setFillColor(RED); c.setFont("Helvetica-BoldOblique", 7.5)
-                c.drawString(x+4, row_y+ROW_H/2-4, "UNFILLED")
+                c.drawString(x+6, row_y+ROW_H/2-4, "UNFILLED")
+
             if is_under:
                 c.setFillColor(RED); c.setFont("Helvetica-Bold", 6)
                 c.drawRightString(x+COL_W-3, row_y+3, f"{len(assigned)}/{req}")
