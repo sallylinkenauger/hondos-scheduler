@@ -469,7 +469,7 @@ with tab3:
             st.success(f"✓ {sel_staff} marked unavailable for {block_day}!"); st.rerun()
 
         if st.button("Clear All Unavailability for " + sel_staff, key="clear_avail_btn"):
-            avail_data[sel_staff] = {}
+            avail_data[sel_staff] = {d: {s: False for s in SHIFTS} for d in DAYS}
             save_avail(avail_data)
             st.success(f"✓ All unavailability cleared for {sel_staff}!"); st.rerun()
 
