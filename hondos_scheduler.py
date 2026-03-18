@@ -559,6 +559,42 @@ with tab5:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
+    st.markdown("---")
+    st.markdown("### 📧 Staff Email List")
+    st.caption("Generate a list of staff emails you can copy and paste directly into any email recipient field.")
+
+    email_options = st.radio(
+        "Include:",
+        ["All staff", "Only staff with emails", "This week's scheduled staff only"],
+        horizontal=True, key="email_filter"
+    )
+
+    if email_options == "All staff":
+        email_staff = [(n, i.get("email","")) for n, i in sorted(staff_dict.items())]
+    elif email_options == "Only staff with emails":
+        email_staff = [(n, i.get("email","")) for n, i in sorted(staff_dict.items()) if i.get("email","").strip()]
+    else:
+        # This week's scheduled staff only
+        scheduled_names = set(
+            name for d in DAYS for s in SHIFTS for name in schedule[d][s]
+        )
+        email_staff = [(n, staff_dict[n].get("email","")) for n in sorted(scheduled_names) if n in staff_dict]
+
+    if st.button("📧 Generate Email List", key="gen_email_btn"):
+        emails_with    = [e for _, e in email_staff if e.strip()]
+        emails_without = [n for n, e in email_staff if not e.strip()]
+
+        if emails_with:
+            email_string = ", ".join(emails_with)
+            st.markdown("**Copy and paste this into your recipient field:**")
+            st.code(email_string, language=None)
+            st.success(f"✓ {len(emails_with)} email address(es) ready to copy!")
+        else:
+            st.warning("No email addresses found for the selected staff. Add emails in the Manage Staff tab.")
+
+        if emails_without:
+            st.info(f"ℹ️ These staff have no email on file: {', '.join(emails_without)}")
+
 # ════════════════════════════════════════════
 # TAB 6 — Settings
 # ════════════════════════════════════════════
