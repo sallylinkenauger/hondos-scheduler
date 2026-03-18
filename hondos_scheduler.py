@@ -247,21 +247,25 @@ def build_pdf(week_label):
             c.setFillColor(accent)
             c.rect(x, row_y, 3, ROW_H, fill=1, stroke=0)
 
-            # Shift label on first column — colored title
+            # Shift label and arrival time on first column only
+            arrival = get_arrival(shift, day)
             if di == 0:
                 c.setFillColor(title_clr); c.setFont("Helvetica-Bold", 7)
                 c.drawString(x+6, row_y+ROW_H-10, shift)
-                arrival = get_arrival(shift, day)
-                if arrival:
-                    c.setFillColor(HexColor("#888888")); c.setFont("Helvetica", 6)
-                    c.drawString(x+6, row_y+ROW_H-19, f"🕐 {arrival}")
 
-            # Staff names
+            # Arrival time pinned to bottom of every cell
+            if arrival:
+                c.setFillColor(HexColor("#888888")); c.setFont("Helvetica", 6)
+                c.drawString(x+6, row_y+4, f"🕐 {arrival}")
+
+            # Staff names — start below the shift label, stop above the arrival time
+            name_top    = row_y + ROW_H - 20
+            name_bottom = row_y + 14  # leave room for arrival time at bottom
             if assigned:
                 c.setFillColor(DARK); c.setFont("Helvetica", 7.5)
                 for ni, name in enumerate(assigned):
-                    ny = row_y + ROW_H - 20 - ni*11
-                    if ny > row_y + 2:
+                    ny = name_top - ni*11
+                    if ny > name_bottom:
                         parts = name.split()
                         short = f"{parts[0]} {parts[-1][0]}." if len(parts) > 1 else name
                         c.drawString(x+6, ny, short)
