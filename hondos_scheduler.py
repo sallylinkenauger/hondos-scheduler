@@ -471,6 +471,12 @@ with tab3:
         if st.button("Clear All Unavailability for " + sel_staff, key="clear_avail_btn"):
             avail_data[sel_staff] = {d: {s: False for s in SHIFTS} for d in DAYS}
             save_avail(avail_data)
+            # Force clear all checkbox session state keys for this staff member
+            for day in DAYS:
+                for shift in SHIFTS:
+                    key = f"avail_{sel_staff}_{day}_{shift}"
+                    if key in st.session_state:
+                        st.session_state[key] = False
             st.success(f"✓ All unavailability cleared for {sel_staff}!"); st.rerun()
 
 # ════════════════════════════════════════════
