@@ -32,9 +32,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-SHIFTS = ["Day", "Day Closer", "Evening", "Evening Closer 1", "Evening Closer 2"]
+SHIFTS = [
+    "Day", "Day Closer", "Day Trainee",
+    "Evening", "Evening Closer 1", "Evening Closer 2", "Evening Bartender", "Evening Trainee"
+]
 DAYS   = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-DEFAULT_REQUIRED = {"Day": 3, "Day Closer": 1, "Evening": 3, "Evening Closer 1": 1, "Evening Closer 2": 1}
+DEFAULT_REQUIRED = {
+    "Day": 3, "Day Closer": 1, "Day Trainee": 1,
+    "Evening": 3, "Evening Closer 1": 1, "Evening Closer 2": 1,
+    "Evening Bartender": 1, "Evening Trainee": 1
+}
 SHEET_ID = "1eoHdsEaP_t3RhHhp_LlsqDe1OjhcxbgSrEUB6UHrzig"
 
 # ── Google Sheets connection ───────────────────────────────────────────────────
@@ -148,8 +155,11 @@ def build_pdf(week_label):
     WHITE = HexColor("#ffffff"); RED  = HexColor("#cc3333")
     SHIFT_COLORS = {
         "Day": HexColor("#e8f5ee"), "Day Closer": HexColor("#fff3e0"),
+        "Day Trainee": HexColor("#e8f8ff"),
         "Evening": HexColor("#e8eaf6"),
         "Evening Closer 1": HexColor("#fce4ec"), "Evening Closer 2": HexColor("#fce4ec"),
+        "Evening Bartender": HexColor("#f3e5f5"),
+        "Evening Trainee": HexColor("#e0f7fa"),
     }
 
     c.setFillColor(DARK); c.rect(0, H-55, W, 55, fill=1, stroke=0)
@@ -242,8 +252,18 @@ with tab1:
                 req      = REQUIRED.get(shift, 1)
                 count    = len(assigned)
                 names    = ", ".join(assigned) if assigned else "—"
-                short    = shift.replace("Evening Closer 1","Eve▲1").replace("Evening Closer 2","Eve▲2").replace("Day Closer","Day★").replace("Evening","Eve")
-                css      = "understaffed" if count < req else ("shift-closer-eve" if "Evening Closer" in shift else "shift-closer-day" if "Day Closer" in shift else "shift-eve" if "Evening" in shift else "shift-day")
+                short    = (shift
+                    .replace("Evening Closer 1","Eve▲1")
+                    .replace("Evening Closer 2","Eve▲2")
+                    .replace("Evening Bartender","Eve🍸")
+                    .replace("Evening Trainee","Eve🎓")
+                    .replace("Day Closer","Day★")
+                    .replace("Day Trainee","Day🎓")
+                    .replace("Evening","Eve"))
+                css      = "understaffed" if count < req else (
+                    "shift-closer-eve" if "Evening Closer" in shift else
+                    "shift-closer-day" if "Day Closer" in shift else
+                    "shift-eve" if "Evening" in shift else "shift-day")
                 st.markdown(f'<div class="{css}"><strong>{short}</strong> ({count}/{req})<br><small>{names}</small></div>', unsafe_allow_html=True)
 
 # ════════════════════════════════════════════
@@ -313,7 +333,14 @@ with tab2:
                     req_s    = REQUIRED.get(shift, 1)
                     count    = len(assigned)
                     names    = "<br>".join(n.split()[0] for n in assigned) if assigned else "—"
-                    short    = shift.replace("Evening Closer 1","Eve▲1").replace("Evening Closer 2","Eve▲2").replace("Day Closer","Day★").replace("Evening","Eve")
+                    short    = (shift
+                        .replace("Evening Closer 1","Eve▲1")
+                        .replace("Evening Closer 2","Eve▲2")
+                        .replace("Evening Bartender","Eve🍸")
+                        .replace("Evening Trainee","Eve🎓")
+                        .replace("Day Closer","Day★")
+                        .replace("Day Trainee","Day🎓")
+                        .replace("Evening","Eve"))
                     is_sel   = (day == sel_day and shift == sel_shift)
                     border   = "3px solid #c9a84c" if is_sel else "1px solid #555"
                     bg       = "#3a1a1a" if count < req_s else ("#2a2a1a" if is_sel else "#1e2a1e" if "Day" in shift else "#1a1a2a")
@@ -347,7 +374,7 @@ with tab3:
             for si, shift in enumerate(SHIFTS):
                 current = avail_data[sel_staff].get(day, {}).get(shift, False)
                 new_val = day_cols[si].checkbox(
-                    shift.replace("Evening Closer 1","Eve▲1").replace("Evening Closer 2","Eve▲2").replace("Day Closer","Day★").replace("Evening","Eve"),
+                    shift.replace("Evening Closer 1","Eve▲1").replace("Evening Closer 2","Eve▲2").replace("Evening Bartender","Eve🍸").replace("Evening Trainee","Eve🎓").replace("Day Closer","Day★").replace("Day Trainee","Day🎓").replace("Evening","Eve"),
                     value=current, key=f"avail_{sel_staff}_{day}_{shift}"
                 )
                 if new_val != current:
@@ -499,13 +526,16 @@ with tab6:
     updated_required = {}
     with s1:
         st.markdown("**Day Shifts:**")
-        updated_required["Day"]        = st.number_input("Day — required", min_value=0, max_value=20, value=REQUIRED.get("Day",3), key="req_day")
-        updated_required["Day Closer"] = st.number_input("Day Closer — required", min_value=0, max_value=10, value=REQUIRED.get("Day Closer",1), key="req_day_c")
+        updated_required["Day"]         = st.number_input("Day — required", min_value=0, max_value=20, value=REQUIRED.get("Day",3), key="req_day")
+        updated_required["Day Closer"]  = st.number_input("Day Closer — required", min_value=0, max_value=10, value=REQUIRED.get("Day Closer",1), key="req_day_c")
+        updated_required["Day Trainee"] = st.number_input("Day Trainee — required", min_value=0, max_value=10, value=REQUIRED.get("Day Trainee",1), key="req_day_t")
     with s2:
         st.markdown("**Evening Shifts:**")
-        updated_required["Evening"]          = st.number_input("Evening — required", min_value=0, max_value=20, value=REQUIRED.get("Evening",3), key="req_eve")
-        updated_required["Evening Closer 1"] = st.number_input("Evening Closer 1 — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Closer 1",1), key="req_eve_c1")
-        updated_required["Evening Closer 2"] = st.number_input("Evening Closer 2 — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Closer 2",1), key="req_eve_c2")
+        updated_required["Evening"]            = st.number_input("Evening — required", min_value=0, max_value=20, value=REQUIRED.get("Evening",3), key="req_eve")
+        updated_required["Evening Closer 1"]   = st.number_input("Evening Closer 1 — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Closer 1",1), key="req_eve_c1")
+        updated_required["Evening Closer 2"]   = st.number_input("Evening Closer 2 — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Closer 2",1), key="req_eve_c2")
+        updated_required["Evening Bartender"]  = st.number_input("Evening Bartender — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Bartender",1), key="req_eve_bar")
+        updated_required["Evening Trainee"]    = st.number_input("Evening Trainee — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Trainee",1), key="req_eve_t")
     if st.button("Save Settings", key="save_req"):
         save_required(updated_required)
         st.success("✓ Settings saved!"); st.rerun()
