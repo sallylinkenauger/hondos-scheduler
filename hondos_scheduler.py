@@ -111,20 +111,20 @@ def load_all():
     return staff_dict, avail, sched, req
 
 def save_staff(data):
-    write_cell(get_sheets()["staff"], "A1", data)
-    st.cache_data.clear()
+    get_sheets()["staff"].update_acell("A1", json.dumps(data))
+    load_all.clear()
 
 def save_avail(data):
-    write_cell(get_sheets()["avail"], "A1", data)
-    st.cache_data.clear()
+    get_sheets()["avail"].update_acell("A1", json.dumps(data))
+    load_all.clear()
 
 def save_schedule(data):
-    write_cell(get_sheets()["schedule"], "A1", data)
-    st.cache_data.clear()
+    get_sheets()["schedule"].update_acell("A1", json.dumps(data))
+    load_all.clear()
 
 def save_required(data):
-    write_cell(get_sheets()["required"], "A1", data)
-    st.cache_data.clear()
+    get_sheets()["required"].update_acell("A1", json.dumps(data))
+    load_all.clear()
 
 # ── Load ───────────────────────────────────────────────────────────────────────
 try:
