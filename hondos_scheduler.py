@@ -42,6 +42,11 @@ DEFAULT_REQUIRED = {
     "Evening": 3, "Evening Closer 1": 1, "Evening Closer 2": 1,
     "Evening Bartender": 1, "Evening Trainee": 1
 }
+DEFAULT_ARRIVAL_TIMES = {
+    "Day": "10:00 AM", "Day Closer": "11:00 AM", "Day Trainee": "10:00 AM",
+    "Evening": "4:00 PM", "Evening Closer 1": "4:00 PM", "Evening Closer 2": "4:00 PM",
+    "Evening Bartender": "4:00 PM", "Evening Trainee": "4:00 PM"
+}
 SHEET_ID = "1eoHdsEaP_t3RhHhp_LlsqDe1OjhcxbgSrEUB6UHrzig"
 
 # ── Google Sheets connection ───────────────────────────────────────────────────
@@ -64,6 +69,7 @@ def get_sheets():
         "avail":    book.worksheet("availability"),
         "schedule": book.worksheet("schedule"),
         "required": book.worksheet("required"),
+        "arrivals": book.worksheet("arrivals"),
     }
 
 # ── Read / write helpers ───────────────────────────────────────────────────────
@@ -75,7 +81,10 @@ def write_cell(sheet, cell, data):
     sheet.update_acell(cell, json.dumps(data))
 
 # ── Debug connection test ──────────────────────────────────────────────────────
-def test_connection():
+def get_arrival(shift, day):
+    """Get arrival time — day override takes priority over default."""
+    overrides = arrivals_data.get("overrides", {})
+    return overrides.get(day, {}).get(shift) or arrivals_data.get("defaults", {}).get(shift, "")
     try:
         sheets = get_sheets()
         sheets["staff"].update_acell("B1", "connection_test")
@@ -115,7 +124,12 @@ def load_all():
     req = read_cell(sheets["required"], "A1")
     if req is None: req = DEFAULT_REQUIRED
 
-    return staff_dict, avail, sched, req
+    # arrival times — default + per day overrides
+    arrivals_raw = read_cell(sheets["arrivals"], "A1")
+    if arrivals_raw is None:
+        arrivals_raw = {"defaults": DEFAULT_ARRIVAL_TIMES, "overrides": {}}
+
+    return staff_dict, avail, sched, req, arrivals_raw
 
 def save_staff(data):
     get_sheets()["staff"].update_acell("A1", json.dumps(data))
@@ -133,9 +147,13 @@ def save_required(data):
     get_sheets()["required"].update_acell("A1", json.dumps(data))
     load_all.clear()
 
+def save_arrivals(data):
+    get_sheets()["arrivals"].update_acell("A1", json.dumps(data))
+    load_all.clear()
+
 # ── Load ───────────────────────────────────────────────────────────────────────
 try:
-    staff_dict, avail_data, schedule, REQUIRED = load_all()
+    staff_dict, avail_data, schedule, REQUIRED, arrivals_data = load_all()
     staff_list = list(staff_dict.keys())
 except Exception as e:
     st.error(f"Could not connect to Google Sheets: {e}")
@@ -233,6 +251,10 @@ def build_pdf(week_label):
             if di == 0:
                 c.setFillColor(title_clr); c.setFont("Helvetica-Bold", 7)
                 c.drawString(x+6, row_y+ROW_H-10, shift)
+                arrival = get_arrival(shift, day)
+                if arrival:
+                    c.setFillColor(HexColor("#888888")); c.setFont("Helvetica", 6)
+                    c.drawString(x+6, row_y+ROW_H-19, f"🕐 {arrival}")
 
             # Staff names
             if assigned:
@@ -306,7 +328,9 @@ with tab1:
                     "shift-closer-eve" if "Evening Closer" in shift else
                     "shift-closer-day" if "Day Closer" in shift else
                     "shift-eve" if "Evening" in shift else "shift-day")
-                st.markdown(f'<div class="{css}"><strong>{short}</strong> ({count}/{req})<br><small>{names}</small></div>', unsafe_allow_html=True)
+                arrival  = get_arrival(shift, day)
+                arrival_str = f"<br><small style='color:#c9a84c'>🕐 {arrival}</small>" if arrival else ""
+                st.markdown(f'<div class="{css}"><strong>{short}</strong> ({count}/{req}){arrival_str}<br><small>{names}</small></div>', unsafe_allow_html=True)
 
 # ════════════════════════════════════════════
 # TAB 2 — Assign Shifts
@@ -617,6 +641,76 @@ with tab6:
     if st.button("Save Settings", key="save_req"):
         save_required(updated_required)
         st.success("✓ Settings saved!"); st.rerun()
+
+    st.markdown("---")
+    st.markdown("### 🕐 Arrival Times")
+    st.caption("Set default arrival times for each shift. You can also override per day below.")
+
+    # ── Default arrival times ──────────────────────────────────────────────
+    st.markdown("**Default Arrival Times:**")
+    defaults = arrivals_data.get("defaults", DEFAULT_ARRIVAL_TIMES)
+    updated_defaults = {}
+    d1, d2 = st.columns(2)
+    with d1:
+        st.markdown("*Day Shifts*")
+        for shift in ["Day", "Day Closer", "Day Trainee"]:
+            updated_defaults[shift] = st.text_input(
+                f"{shift}", value=defaults.get(shift, ""),
+                placeholder="e.g. 10:00 AM", key=f"arr_def_{shift}"
+            )
+    with d2:
+        st.markdown("*Evening Shifts*")
+        for shift in ["Evening", "Evening Closer 1", "Evening Closer 2", "Evening Bartender", "Evening Trainee"]:
+            updated_defaults[shift] = st.text_input(
+                f"{shift}", value=defaults.get(shift, ""),
+                placeholder="e.g. 4:00 PM", key=f"arr_def_{shift}"
+            )
+
+    if st.button("Save Default Arrival Times", key="save_arr_def"):
+        arrivals_data["defaults"] = updated_defaults
+        save_arrivals(arrivals_data)
+        st.success("✓ Default arrival times saved!"); st.rerun()
+
+    st.markdown("---")
+    st.markdown("**Per Day Overrides:**")
+    st.caption("Leave blank to use the default time. Only fill in if a specific day differs.")
+
+    overrides = arrivals_data.get("overrides", {})
+    sel_override_day = st.selectbox("Select day to override", DAYS, key="override_day_sel")
+
+    day_overrides = overrides.get(sel_override_day, {})
+    updated_overrides = {}
+    o1, o2 = st.columns(2)
+    with o1:
+        st.markdown("*Day Shifts*")
+        for shift in ["Day", "Day Closer", "Day Trainee"]:
+            default_hint = defaults.get(shift, "")
+            updated_overrides[shift] = st.text_input(
+                f"{shift}", value=day_overrides.get(shift, ""),
+                placeholder=f"Default: {default_hint}" if default_hint else "e.g. 10:00 AM",
+                key=f"arr_ov_{sel_override_day}_{shift}"
+            )
+    with o2:
+        st.markdown("*Evening Shifts*")
+        for shift in ["Evening", "Evening Closer 1", "Evening Closer 2", "Evening Bartender", "Evening Trainee"]:
+            default_hint = defaults.get(shift, "")
+            updated_overrides[shift] = st.text_input(
+                f"{shift}", value=day_overrides.get(shift, ""),
+                placeholder=f"Default: {default_hint}" if default_hint else "e.g. 4:00 PM",
+                key=f"arr_ov_{sel_override_day}_{shift}"
+            )
+
+    if st.button(f"Save {sel_override_day} Overrides", key="save_arr_ov"):
+        # Only save non-empty overrides
+        clean = {s: t for s, t in updated_overrides.items() if t.strip()}
+        arrivals_data["overrides"][sel_override_day] = clean
+        save_arrivals(arrivals_data)
+        st.success(f"✓ Overrides saved for {sel_override_day}!"); st.rerun()
+
+    if st.button(f"Clear {sel_override_day} Overrides (use defaults)", key="clear_arr_ov"):
+        arrivals_data["overrides"].pop(sel_override_day, None)
+        save_arrivals(arrivals_data)
+        st.success(f"✓ {sel_override_day} overrides cleared!"); st.rerun()
 
     st.markdown("---")
     st.markdown("### 🔧 Connection Debug")
