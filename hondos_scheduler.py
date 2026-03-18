@@ -437,11 +437,10 @@ with tab3:
         if sel_staff not in avail_data:
             avail_data[sel_staff] = {}
 
-        # Clear last_cleared flag if user switched to a different staff member
-        if st.session_state.get("last_cleared") != sel_staff:
-            st.session_state.pop("last_cleared", None)
-
-        just_cleared = "last_cleared" in st.session_state
+        # Counter increments on clear — forces fresh checkbox keys so Streamlit re-reads value
+        counter_key = f"avail_counter_{sel_staff}"
+        if counter_key not in st.session_state:
+            st.session_state[counter_key] = 0
 
         st.markdown(f"**Mark shifts {sel_staff} CANNOT work:**")
         updated = False
@@ -449,11 +448,12 @@ with tab3:
             st.markdown(f"**{day}**")
             day_cols = st.columns(len(SHIFTS))
             for si, shift in enumerate(SHIFTS):
-                # True = unavailable. If just cleared, force False regardless of cache
-                current = False if just_cleared else avail_data[sel_staff].get(day, {}).get(shift, False)
+                current = avail_data[sel_staff].get(day, {}).get(shift, False)
+                # Include counter in key so clearing forces brand new widgets
+                widget_key = f"avail_{sel_staff}_{day}_{shift}_{st.session_state[counter_key]}"
                 new_val = day_cols[si].checkbox(
                     shift.replace("Evening Closer 1","Eve▲1").replace("Evening Closer 2","Eve▲2").replace("Evening Bartender","Eve🍸").replace("Evening Trainee","Eve🎓").replace("Day Closer","Day★").replace("Day Trainee","Day🎓").replace("Evening","Eve"),
-                    value=current, key=f"avail_{sel_staff}_{day}_{shift}"
+                    value=current, key=widget_key
                 )
                 if new_val != current:
                     if day not in avail_data[sel_staff]: avail_data[sel_staff][day] = {}
@@ -477,7 +477,7 @@ with tab3:
         if st.button("Clear All Unavailability for " + sel_staff, key="clear_avail_btn"):
             avail_data[sel_staff] = {d: {s: False for s in SHIFTS} for d in DAYS}
             save_avail(avail_data)
-            st.session_state["last_cleared"] = sel_staff
+            st.session_state[counter_key] += 1
             st.success(f"✓ All unavailability cleared for {sel_staff}!")
             st.rerun()
 
