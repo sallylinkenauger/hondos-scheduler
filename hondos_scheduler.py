@@ -288,7 +288,7 @@ st.markdown("<h1 style='font-size:2.4rem;'>🍽️ Hondo's Weekly Scheduler</h1>
 total_staff    = len(staff_list)
 total_assigned = sum(len(schedule[d][s]) for d in DAYS for s in SHIFTS)
 understaffed   = sum(1 for d in DAYS for s in SHIFTS if len(schedule[d][s]) < REQUIRED.get(s, 1))
-avail_count    = len([n for n in staff_list if any(
+avail_count    = len([n for n in staff_list if not all(
     avail_data.get(n, {}).get(d, {}).get(s, False) for d in DAYS for s in SHIFTS)])
 
 c1,c2,c3,c4 = st.columns(4)
@@ -360,7 +360,7 @@ with tab2:
         with c_add:
             st.markdown("**Add available staff:**")
             avail_for_slot = [n for n in staff_list
-                if avail_data.get(n,{}).get(sel_day,{}).get(sel_shift, False)
+                if not avail_data.get(n,{}).get(sel_day,{}).get(sel_shift, False)
                 and n not in already]
             if avail_for_slot:
                 to_add = st.selectbox("Available", ["— select —"]+avail_for_slot, key="add_staff")
@@ -428,20 +428,22 @@ with tab2:
 # TAB 3 — Availability
 # ════════════════════════════════════════════
 with tab3:
-    st.markdown("### Staff Availability")
+    st.markdown("### Staff Unavailability")
+    st.caption("Check the shifts a staff member **cannot** work. Unchecked = available.")
     if not staff_list:
         st.warning("No staff added yet.")
     else:
         sel_staff = st.selectbox("Staff Member", staff_list, key="avail_staff")
         if sel_staff not in avail_data:
-            avail_data[sel_staff] = {d: {s: False for s in SHIFTS} for d in DAYS}
+            avail_data[sel_staff] = {}
 
-        st.markdown(f"**Availability for {sel_staff}:**")
+        st.markdown(f"**Mark shifts {sel_staff} CANNOT work:**")
         updated = False
         for day in DAYS:
             st.markdown(f"**{day}**")
             day_cols = st.columns(len(SHIFTS))
             for si, shift in enumerate(SHIFTS):
+                # True = unavailable (cannot work)
                 current = avail_data[sel_staff].get(day, {}).get(shift, False)
                 new_val = day_cols[si].checkbox(
                     shift.replace("Evening Closer 1","Eve▲1").replace("Evening Closer 2","Eve▲2").replace("Evening Bartender","Eve🍸").replace("Evening Trainee","Eve🎓").replace("Day Closer","Day★").replace("Day Trainee","Day🎓").replace("Evening","Eve"),
@@ -453,15 +455,23 @@ with tab3:
                     updated = True
         if updated:
             save_avail(avail_data)
-            st.success(f"✓ Availability updated for {sel_staff}!")
+            st.success(f"✓ Unavailability updated for {sel_staff}!")
 
         st.markdown("---")
-        st.markdown("**Block out a full day:**")
+        st.markdown("**Mark entire day as unavailable:**")
         block_day = st.selectbox("Day to block", DAYS, key="block_day")
         if st.button("Block This Day", key="block_btn"):
-            for s in SHIFTS: avail_data[sel_staff][block_day][s] = False
+            if block_day not in avail_data[sel_staff]:
+                avail_data[sel_staff][block_day] = {}
+            for s in SHIFTS:
+                avail_data[sel_staff][block_day][s] = True
             save_avail(avail_data)
-            st.success(f"✓ {sel_staff} blocked for {block_day}!"); st.rerun()
+            st.success(f"✓ {sel_staff} marked unavailable for {block_day}!"); st.rerun()
+
+        if st.button("Clear All Unavailability for " + sel_staff, key="clear_avail_btn"):
+            avail_data[sel_staff] = {}
+            save_avail(avail_data)
+            st.success(f"✓ All unavailability cleared for {sel_staff}!"); st.rerun()
 
 # ════════════════════════════════════════════
 # TAB 4 — Manage Staff
