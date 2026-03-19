@@ -41,6 +41,29 @@ DAY_ROLES     = ["Off", "Day", "Day Closer", "Day Trainee", "Day Hostess"]
 EVENING_ROLES = ["Off", "Evening", "Evening Closer 1", "Evening Closer 2",
                  "Evening Bartender", "Evening Trainee", "Evening Hostess",
                  "Evening Expo", "Evening Busser"]
+
+# Short display labels for grid dropdowns
+DAY_ROLE_LABELS = {
+    "Off": "Off",
+    "Day": "Server",
+    "Day Closer": "Server Closer",
+    "Day Trainee": "Trainee",
+    "Day Hostess": "Hostess",
+}
+EVENING_ROLE_LABELS = {
+    "Off": "Off",
+    "Evening": "Server",
+    "Evening Closer 1": "Closer 1",
+    "Evening Closer 2": "Closer 2",
+    "Evening Bartender": "Bartender",
+    "Evening Trainee": "Trainee",
+    "Evening Hostess": "Hostess",
+    "Evening Expo": "Expo",
+    "Evening Busser": "Busser",
+}
+# Reverse maps for converting label back to role key
+DAY_LABEL_TO_ROLE   = {v: k for k, v in DAY_ROLE_LABELS.items()}
+EVE_LABEL_TO_ROLE   = {v: k for k, v in EVENING_ROLE_LABELS.items()}
 DAYS   = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 DEFAULT_REQUIRED = {
     "Day": 3, "Day Closer": 1, "Day Trainee": 1, "Day Hostess": 2,
@@ -478,33 +501,46 @@ with tab3:
         changed = False
         for name in sorted(staff_list):
             row_cols = st.columns([2] + [1]*7)
-            row_cols[0].markdown(f"**{name.split()[0]}**")
+
+            # Name + Day/Evening labels in left column
+            with row_cols[0]:
+                st.markdown(f"**{name.split()[0]}**")
+                st.markdown("<small style='color:#c9a84c'>☀️ Day</small>", unsafe_allow_html=True)
+                st.markdown("<small style='color:#7a8fff'>🌙 Eve</small>", unsafe_allow_html=True)
+
             for di, day in enumerate(DAYS):
                 with row_cols[di+1]:
                     cur_day = grid[name][day].get("day", "Off")
                     cur_eve = grid[name][day].get("eve", "Off")
 
-                    # Day dropdown
-                    day_idx = DAY_ROLES.index(cur_day) if cur_day in DAY_ROLES else 0
-                    new_day = st.selectbox(
-                        f"D", DAY_ROLES, index=day_idx,
+                    # Day dropdown — show short labels
+                    day_labels = list(DAY_ROLE_LABELS.values())
+                    cur_day_label = DAY_ROLE_LABELS.get(cur_day, "Off")
+                    day_idx = day_labels.index(cur_day_label) if cur_day_label in day_labels else 0
+                    new_day_label = st.selectbox(
+                        "D", day_labels, index=day_idx,
                         key=f"grid_{name}_{day}_day",
                         label_visibility="collapsed"
                     )
-                    # Evening dropdown
-                    eve_idx = EVENING_ROLES.index(cur_eve) if cur_eve in EVENING_ROLES else 0
-                    new_eve = st.selectbox(
-                        f"E", EVENING_ROLES, index=eve_idx,
+                    new_day = DAY_LABEL_TO_ROLE.get(new_day_label, "Off")
+
+                    # Evening dropdown — show short labels
+                    eve_labels = list(EVENING_ROLE_LABELS.values())
+                    cur_eve_label = EVENING_ROLE_LABELS.get(cur_eve, "Off")
+                    eve_idx = eve_labels.index(cur_eve_label) if cur_eve_label in eve_labels else 0
+                    new_eve_label = st.selectbox(
+                        "E", eve_labels, index=eve_idx,
                         key=f"grid_{name}_{day}_eve",
                         label_visibility="collapsed"
                     )
+                    new_eve = EVE_LABEL_TO_ROLE.get(new_eve_label, "Off")
 
                     if new_day != cur_day or new_eve != cur_eve:
                         grid[name][day]["day"] = new_day
                         grid[name][day]["eve"] = new_eve
                         changed = True
 
-            st.markdown("")
+            st.markdown("---")
 
         st.markdown("---")
         col_save, col_clear = st.columns(2)
