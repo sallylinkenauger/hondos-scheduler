@@ -528,32 +528,51 @@ with tab3:
                     cur_day = grid[name][day].get("day", "Off")
                     cur_eve = grid[name][day].get("eve", "Off")
 
-                    # Day dropdown — show short labels
-                    day_labels = list(DAY_ROLE_LABELS.values())
-                    cur_day_label = DAY_ROLE_LABELS.get(cur_day, "Off")
-                    day_idx = day_labels.index(cur_day_label) if cur_day_label in day_labels else 0
-                    new_day_label = st.selectbox(
-                        "D", day_labels, index=day_idx,
-                        key=f"grid_{name}_{day}_day",
-                        label_visibility="collapsed"
-                    )
-                    new_day = DAY_LABEL_TO_ROLE.get(new_day_label, "Off")
+                    # Check unavailability
+                    day_unavail = avail_data.get(name, {}).get(day, {}).get("day_unavail", False)
+                    eve_unavail = avail_data.get(name, {}).get(day, {}).get("eve_unavail", False)
 
-                    # Evening dropdown — show short labels
-                    eve_labels = list(EVENING_ROLE_LABELS.values())
-                    cur_eve_label = EVENING_ROLE_LABELS.get(cur_eve, "Off")
-                    eve_idx = eve_labels.index(cur_eve_label) if cur_eve_label in eve_labels else 0
-                    new_eve_label = st.selectbox(
-                        "E", eve_labels, index=eve_idx,
-                        key=f"grid_{name}_{day}_eve",
-                        label_visibility="collapsed"
-                    )
-                    new_eve = EVE_LABEL_TO_ROLE.get(new_eve_label, "Off")
+                    # Day dropdown — disabled if unavailable
+                    if day_unavail:
+                        st.markdown("<small style='color:#ff4444'>☀️ unavail</small>", unsafe_allow_html=True)
+                        # Force to Off if currently assigned
+                        if cur_day != "Off":
+                            grid[name][day]["day"] = "Off"
+                            changed = True
+                    else:
+                        day_labels = list(DAY_ROLE_LABELS.values())
+                        cur_day_label = DAY_ROLE_LABELS.get(cur_day, "Off")
+                        day_idx = day_labels.index(cur_day_label) if cur_day_label in day_labels else 0
+                        new_day_label = st.selectbox(
+                            "D", day_labels, index=day_idx,
+                            key=f"grid_{name}_{day}_day",
+                            label_visibility="collapsed"
+                        )
+                        new_day = DAY_LABEL_TO_ROLE.get(new_day_label, "Off")
+                        if new_day != cur_day:
+                            grid[name][day]["day"] = new_day
+                            changed = True
 
-                    if new_day != cur_day or new_eve != cur_eve:
-                        grid[name][day]["day"] = new_day
-                        grid[name][day]["eve"] = new_eve
-                        changed = True
+                    # Evening dropdown — disabled if unavailable
+                    if eve_unavail:
+                        st.markdown("<small style='color:#ff4444'>🌙 unavail</small>", unsafe_allow_html=True)
+                        # Force to Off if currently assigned
+                        if cur_eve != "Off":
+                            grid[name][day]["eve"] = "Off"
+                            changed = True
+                    else:
+                        eve_labels = list(EVENING_ROLE_LABELS.values())
+                        cur_eve_label = EVENING_ROLE_LABELS.get(cur_eve, "Off")
+                        eve_idx = eve_labels.index(cur_eve_label) if cur_eve_label in eve_labels else 0
+                        new_eve_label = st.selectbox(
+                            "E", eve_labels, index=eve_idx,
+                            key=f"grid_{name}_{day}_eve",
+                            label_visibility="collapsed"
+                        )
+                        new_eve = EVE_LABEL_TO_ROLE.get(new_eve_label, "Off")
+                        if new_eve != cur_eve:
+                            grid[name][day]["eve"] = new_eve
+                            changed = True
 
             st.markdown("---")
 
