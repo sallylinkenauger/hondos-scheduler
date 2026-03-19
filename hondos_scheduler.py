@@ -66,10 +66,13 @@ DAY_LABEL_TO_ROLE   = {v: k for k, v in DAY_ROLE_LABELS.items()}
 EVE_LABEL_TO_ROLE   = {v: k for k, v in EVENING_ROLE_LABELS.items()}
 DAYS   = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 DEFAULT_REQUIRED = {
-    "Day": 3, "Day Closer": 1, "Day Trainee": 1, "Day Hostess": 2,
-    "Evening": 3, "Evening Closer 1": 1, "Evening Closer 2": 1,
-    "Evening Bartender": 1, "Evening Trainee": 1,
-    "Evening Hostess": 2, "Evening Expo": 1, "Evening Busser": 0
+    shift: {day: default for day in ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]}
+    for shift, default in {
+        "Day": 3, "Day Closer": 1, "Day Trainee": 1, "Day Hostess": 2,
+        "Evening": 3, "Evening Closer 1": 1, "Evening Closer 2": 1,
+        "Evening Bartender": 1, "Evening Trainee": 1,
+        "Evening Hostess": 2, "Evening Expo": 1, "Evening Busser": 0
+    }.items()
 }
 DEFAULT_ARRIVAL_TIMES = {
     "Day": "10:00 AM", "Day Closer": "11:00 AM", "Day Trainee": "10:00 AM", "Day Hostess": "10:00 AM",
@@ -116,6 +119,13 @@ def get_arrival(shift, day):
     """Get arrival time — day override takes priority over default."""
     overrides = arrivals_data.get("overrides", {})
     return overrides.get(day, {}).get(shift) or arrivals_data.get("defaults", {}).get(shift, "")
+
+def get_required(shift, day):
+    """Get required staff count for a shift on a specific day."""
+    val = REQUIRED.get(shift, {})
+    if isinstance(val, dict):
+        return val.get(day, 0)
+    return val  # backwards compat with old flat structure
 
 # ── Debug connection test ──────────────────────────────────────────────────────
 def test_connection():
@@ -277,7 +287,7 @@ def build_pdf(week_label):
         for di, day in enumerate(DAYS):
             x        = MARGIN + di*COL_W
             assigned = schedule[day][shift]
-            req      = REQUIRED.get(shift, 1)
+            req      = get_required(shift, day)
             is_under = len(assigned) < req
             bg = HexColor("#ffe8e8") if is_under else SHIFT_COLORS.get(shift, HexColor("#f5f5f5"))
 
@@ -329,9 +339,11 @@ st.markdown("<h1 style='font-size:2.4rem;'>🍽️ Hondo's Weekly Scheduler</h1>
 
 total_staff    = len(staff_list)
 total_assigned = sum(len(schedule[d][s]) for d in DAYS for s in SHIFTS)
-understaffed   = sum(1 for d in DAYS for s in SHIFTS if len(schedule[d][s]) < REQUIRED.get(s, 1))
+understaffed   = sum(1 for d in DAYS for s in SHIFTS if len(schedule[d][s]) < get_required(s, d))
 avail_count    = len([n for n in staff_list if not all(
-    avail_data.get(n, {}).get(d, {}).get(s, False) for d in DAYS for s in SHIFTS)])
+    avail_data.get(n, {}).get(d, {}).get("day_unavail", False) and
+    avail_data.get(n, {}).get(d, {}).get("eve_unavail", False)
+    for d in DAYS)])
 
 c1,c2,c3,c4 = st.columns(4)
 for col, label, value in zip([c1,c2,c3,c4],
@@ -359,7 +371,7 @@ with tab1:
             st.markdown(f"**{day[:3]}**")
             for shift in SHIFTS:
                 assigned = schedule[day][shift]
-                req      = REQUIRED.get(shift, 1)
+                req      = get_required(shift, day)
                 count    = len(assigned)
                 names    = ", ".join(assigned) if assigned else "—"
                 short    = (shift
@@ -391,7 +403,7 @@ with tab2:
         with a2: sel_shift = st.selectbox("Shift", SHIFTS, key="assign_shift")
 
         already = schedule[sel_day][sel_shift]
-        req     = REQUIRED.get(sel_shift, 1)
+        req     = get_required(sel_shift, sel_day)
 
         if len(already) < req:
             st.warning(f"⚠️ {sel_day} — {sel_shift}: {len(already)}/{req} — need {req-len(already)} more")
@@ -401,9 +413,12 @@ with tab2:
         c_add, c_remove = st.columns(2)
         with c_add:
             st.markdown("**Add available staff:**")
+            # Available = not marked unavailable for this day's period (day or evening)
+            is_day_shift = not sel_shift.startswith("Evening")
+            avail_key    = "day_unavail" if is_day_shift else "eve_unavail"
             avail_for_slot = [n for n in staff_list
-                if not avail_data.get(n,{}).get(sel_day,{}).get(sel_shift, False)
-                and n not in already]
+                    if not avail_data.get(n,{}).get(sel_day,{}).get(avail_key, False)
+                    and n not in already]
             if avail_for_slot:
                 to_add = st.selectbox("Available", ["— select —"]+avail_for_slot, key="add_staff")
                 if st.button("➕ Add to Shift", key="add_btn"):
@@ -442,7 +457,7 @@ with tab2:
                 st.markdown(f"**{'→ ' if day==sel_day else ''}{day[:3]}**")
                 for shift in SHIFTS:
                     assigned = schedule[day][shift]
-                    req_s    = REQUIRED.get(shift, 1)
+                    req_s    = get_required(shift, day)
                     count    = len(assigned)
                     names    = "<br>".join(n.split()[0] for n in assigned) if assigned else "—"
                     short    = (shift
@@ -592,11 +607,11 @@ with tab3:
                     st.markdown(f"<small style='color:#ddd'>{n.split()[0]} <span style='color:#888'>— {short_role}</span></small>", unsafe_allow_html=True)
 
 # ════════════════════════════════════════════
-# TAB 3 — Availability
+# TAB 4 — Unavailability
 # ════════════════════════════════════════════
 with tab4:
     st.markdown("### Staff Unavailability")
-    st.caption("Check the shifts a staff member **cannot** work. Unchecked = available.")
+    st.caption("Tick any shift the staff member **cannot** work. Unticked = available.")
     if not staff_list:
         st.warning("No staff added yet.")
     else:
@@ -604,49 +619,75 @@ with tab4:
         if sel_staff not in avail_data:
             avail_data[sel_staff] = {}
 
-        # Counter increments on clear — forces fresh checkbox keys so Streamlit re-reads value
+        # Counter for forcing checkbox reset on clear
         counter_key = f"avail_counter_{sel_staff}"
         if counter_key not in st.session_state:
             st.session_state[counter_key] = 0
+        cnt = st.session_state[counter_key]
 
-        st.markdown(f"**Mark shifts {sel_staff} CANNOT work:**")
+        st.markdown(f"**Mark when {sel_staff} cannot work:**")
+        st.markdown("")
+
+        # Header row
+        hcols = st.columns([2, 1, 1])
+        hcols[0].markdown("**Day**")
+        hcols[1].markdown("☀️ **Day shift**")
+        hcols[2].markdown("🌙 **Evening shift**")
+        st.markdown("---")
+
         updated = False
         for day in DAYS:
-            st.markdown(f"**{day}**")
-            day_cols = st.columns(len(SHIFTS))
-            for si, shift in enumerate(SHIFTS):
-                current = avail_data[sel_staff].get(day, {}).get(shift, False)
-                # Include counter in key so clearing forces brand new widgets
-                widget_key = f"avail_{sel_staff}_{day}_{shift}_{st.session_state[counter_key]}"
-                new_val = day_cols[si].checkbox(
-                    shift.replace("Evening Closer 1","Eve▲1").replace("Evening Closer 2","Eve▲2").replace("Evening Bartender","Eve🍸").replace("Evening Trainee","Eve🎓").replace("Day Closer","Day★").replace("Day Trainee","Day🎓").replace("Evening","Eve"),
-                    value=current, key=widget_key
-                )
-                if new_val != current:
-                    if day not in avail_data[sel_staff]: avail_data[sel_staff][day] = {}
-                    avail_data[sel_staff][day][shift] = new_val
-                    updated = True
+            dcols = st.columns([2, 1, 1])
+            dcols[0].markdown(f"**{day}**")
+
+            # Day unavailability
+            cur_day = avail_data[sel_staff].get(day, {}).get("day_unavail", False)
+            new_day = dcols[1].checkbox(
+                "Cannot work", value=cur_day,
+                key=f"avail_{sel_staff}_{day}_day_{cnt}",
+                label_visibility="collapsed"
+            )
+            # Evening unavailability
+            cur_eve = avail_data[sel_staff].get(day, {}).get("eve_unavail", False)
+            new_eve = dcols[2].checkbox(
+                "Cannot work", value=cur_eve,
+                key=f"avail_{sel_staff}_{day}_eve_{cnt}",
+                label_visibility="collapsed"
+            )
+
+            if new_day != cur_day or new_eve != cur_eve:
+                if day not in avail_data[sel_staff]:
+                    avail_data[sel_staff][day] = {}
+                avail_data[sel_staff][day]["day_unavail"] = new_day
+                avail_data[sel_staff][day]["eve_unavail"] = new_eve
+                updated = True
+
         if updated:
             save_avail(avail_data)
             st.success(f"✓ Unavailability updated for {sel_staff}!")
 
         st.markdown("---")
-        st.markdown("**Mark entire day as unavailable:**")
-        block_day = st.selectbox("Day to block", DAYS, key="block_day")
-        if st.button("Block This Day", key="block_btn"):
-            if block_day not in avail_data[sel_staff]:
-                avail_data[sel_staff][block_day] = {}
-            for s in SHIFTS:
-                avail_data[sel_staff][block_day][s] = True
-            save_avail(avail_data)
-            st.success(f"✓ {sel_staff} marked unavailable for {block_day}!"); st.rerun()
+        col_block, col_clear = st.columns(2)
 
-        if st.button("Clear All Unavailability for " + sel_staff, key="clear_avail_btn"):
-            avail_data[sel_staff] = {d: {s: False for s in SHIFTS} for d in DAYS}
-            save_avail(avail_data)
-            st.session_state[counter_key] += 1
-            st.success(f"✓ All unavailability cleared for {sel_staff}!")
-            st.rerun()
+        with col_block:
+            st.markdown("**Block entire day:**")
+            block_day = st.selectbox("Day", DAYS, key="block_day")
+            if st.button("Block Day & Evening", key="block_btn"):
+                if block_day not in avail_data[sel_staff]:
+                    avail_data[sel_staff][block_day] = {}
+                avail_data[sel_staff][block_day]["day_unavail"] = True
+                avail_data[sel_staff][block_day]["eve_unavail"] = True
+                save_avail(avail_data)
+                st.session_state[counter_key] += 1
+                st.success(f"✓ {sel_staff} blocked for {block_day}!"); st.rerun()
+
+        with col_clear:
+            st.markdown("**Reset all:**")
+            if st.button(f"Clear All Unavailability", key="clear_avail_btn"):
+                avail_data[sel_staff] = {d: {"day_unavail": False, "eve_unavail": False} for d in DAYS}
+                save_avail(avail_data)
+                st.session_state[counter_key] += 1
+                st.success(f"✓ Cleared for {sel_staff}!"); st.rerun()
 
 # ════════════════════════════════════════════
 # TAB 5 — Manage Staff
@@ -722,7 +763,7 @@ with tab6:
     for day in DAYS:
         for shift in SHIFTS:
             assigned = schedule[day][shift]
-            req      = REQUIRED.get(shift, 1)
+            req      = get_required(shift, day)
             rows.append({
                 "Day": day, "Shift": shift, "Required": req,
                 "Assigned": len(assigned),
@@ -811,25 +852,61 @@ with tab6:
 # ════════════════════════════════════════════
 # TAB 7 — Settings
 # ════════════════════════════════════════════
+# ════════════════════════════════════════════
+# TAB 7 — Settings
+# ════════════════════════════════════════════
 with tab7:
-    st.markdown("### Shift Slot Settings")
-    s1, s2 = st.columns(2)
+    st.markdown("### ⚙️ Shift Slot Settings")
+    st.caption("Set how many staff are required for each shift — you can set a different number per day.")
+
     updated_required = {}
-    with s1:
-        st.markdown("**Day Shifts:**")
-        updated_required["Day"]         = st.number_input("Day — required", min_value=0, max_value=20, value=REQUIRED.get("Day",3), key="req_day")
-        updated_required["Day Closer"]  = st.number_input("Day Closer — required", min_value=0, max_value=10, value=REQUIRED.get("Day Closer",1), key="req_day_c")
-        updated_required["Day Trainee"] = st.number_input("Day Trainee — required", min_value=0, max_value=10, value=REQUIRED.get("Day Trainee",1), key="req_day_t")
-    with s2:
-        st.markdown("**Evening Shifts:**")
-        updated_required["Evening"]            = st.number_input("Evening — required", min_value=0, max_value=20, value=REQUIRED.get("Evening",3), key="req_eve")
-        updated_required["Evening Closer 1"]   = st.number_input("Evening Closer 1 — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Closer 1",1), key="req_eve_c1")
-        updated_required["Evening Closer 2"]   = st.number_input("Evening Closer 2 — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Closer 2",1), key="req_eve_c2")
-        updated_required["Evening Bartender"]  = st.number_input("Evening Bartender — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Bartender",1), key="req_eve_bar")
-        updated_required["Evening Trainee"]    = st.number_input("Evening Trainee — required", min_value=0, max_value=10, value=REQUIRED.get("Evening Trainee",1), key="req_eve_t")
-    if st.button("Save Settings", key="save_req"):
-        save_required(updated_required)
-        st.success("✓ Settings saved!"); st.rerun()
+    sel_req_shift = st.selectbox("Select shift to configure", SHIFTS, key="req_shift_sel")
+
+    st.markdown(f"**Required staff for: {sel_req_shift}**")
+    day_cols = st.columns(7)
+    shift_vals = REQUIRED.get(sel_req_shift, {})
+    if isinstance(shift_vals, int):
+        shift_vals = {d: shift_vals for d in DAYS}
+
+    new_day_vals = {}
+    for di, day in enumerate(DAYS):
+        with day_cols[di]:
+            st.markdown(f"**{day[:3]}**")
+            current = shift_vals.get(day, 0)
+            new_day_vals[day] = st.number_input(
+                day, min_value=0, max_value=20,
+                value=current, step=1,
+                key=f"req_{sel_req_shift}_{day}",
+                label_visibility="collapsed"
+            )
+
+    col_save_req, col_fill = st.columns(2)
+    with col_save_req:
+        if st.button(f"Save {sel_req_shift} Requirements", key="save_req_btn"):
+            updated_required = {**REQUIRED}
+            updated_required[sel_req_shift] = new_day_vals
+            save_required(updated_required)
+            st.success(f"✓ Requirements saved for {sel_req_shift}!"); st.rerun()
+    with col_fill:
+        fill_val = st.number_input("Fill all days with:", min_value=0, max_value=20, value=0, key="fill_val")
+        if st.button("Apply to all days", key="fill_btn"):
+            updated_required = {**REQUIRED}
+            updated_required[sel_req_shift] = {d: fill_val for d in DAYS}
+            save_required(updated_required)
+            st.success(f"✓ All days set to {fill_val} for {sel_req_shift}!"); st.rerun()
+
+    # Summary table
+    st.markdown("---")
+    st.markdown("**Current Requirements Summary:**")
+    summary_rows = []
+    for shift in SHIFTS:
+        vals = REQUIRED.get(shift, {})
+        if isinstance(vals, int): vals = {d: vals for d in DAYS}
+        row = {"Shift": shift}
+        for day in DAYS:
+            row[day[:3]] = vals.get(day, 0)
+        summary_rows.append(row)
+    st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("### 🕐 Arrival Times")
