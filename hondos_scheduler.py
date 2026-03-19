@@ -776,7 +776,7 @@ with tab6:
     st.markdown("---")
     st.markdown("### 📋 Finalize & Export PDF")
 
-    understaffed_list = [(d,s) for d in DAYS for s in SHIFTS if len(schedule[d][s]) < REQUIRED.get(s,1)]
+    understaffed_list = [(d,s) for d in DAYS for s in SHIFTS if len(schedule[d][s]) < get_required(s,d)]
     if understaffed_list:
         st.warning(f"⚠️ {len(understaffed_list)} shift(s) still understaffed — will show as UNFILLED in PDF.")
     else:
