@@ -33,19 +33,26 @@ st.markdown("""
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 SHIFTS = [
-    "Day", "Day Closer", "Day Trainee",
-    "Evening", "Evening Closer 1", "Evening Closer 2", "Evening Bartender", "Evening Trainee"
+    "Day", "Day Closer", "Day Trainee", "Day Hostess",
+    "Evening", "Evening Closer 1", "Evening Closer 2", "Evening Bartender",
+    "Evening Trainee", "Evening Hostess", "Evening Expo", "Evening Busser (optional)"
 ]
+DAY_ROLES     = ["Off", "Day", "Day Closer", "Day Trainee", "Day Hostess"]
+EVENING_ROLES = ["Off", "Evening", "Evening Closer 1", "Evening Closer 2",
+                 "Evening Bartender", "Evening Trainee", "Evening Hostess",
+                 "Evening Expo", "Evening Busser"]
 DAYS   = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 DEFAULT_REQUIRED = {
-    "Day": 3, "Day Closer": 1, "Day Trainee": 1,
+    "Day": 3, "Day Closer": 1, "Day Trainee": 1, "Day Hostess": 2,
     "Evening": 3, "Evening Closer 1": 1, "Evening Closer 2": 1,
-    "Evening Bartender": 1, "Evening Trainee": 1
+    "Evening Bartender": 1, "Evening Trainee": 1,
+    "Evening Hostess": 2, "Evening Expo": 1, "Evening Busser": 0
 }
 DEFAULT_ARRIVAL_TIMES = {
-    "Day": "10:00 AM", "Day Closer": "11:00 AM", "Day Trainee": "10:00 AM",
+    "Day": "10:00 AM", "Day Closer": "11:00 AM", "Day Trainee": "10:00 AM", "Day Hostess": "10:00 AM",
     "Evening": "4:00 PM", "Evening Closer 1": "4:00 PM", "Evening Closer 2": "4:00 PM",
-    "Evening Bartender": "4:00 PM", "Evening Trainee": "4:00 PM"
+    "Evening Bartender": "4:00 PM", "Evening Trainee": "4:00 PM",
+    "Evening Hostess": "4:00 PM", "Evening Expo": "4:00 PM", "Evening Busser": "4:00 PM"
 }
 SHEET_ID = "1eoHdsEaP_t3RhHhp_LlsqDe1OjhcxbgSrEUB6UHrzig"
 
@@ -70,6 +77,7 @@ def get_sheets():
         "schedule": book.worksheet("schedule"),
         "required": book.worksheet("required"),
         "arrivals": book.worksheet("arrivals"),
+        "grid":     book.worksheet("grid"),
     }
 
 # ── Read / write helpers ───────────────────────────────────────────────────────
@@ -80,11 +88,14 @@ def read_cell(sheet, cell):
 def write_cell(sheet, cell, data):
     sheet.update_acell(cell, json.dumps(data))
 
-# ── Debug connection test ──────────────────────────────────────────────────────
+# ── Arrival time helper ────────────────────────────────────────────────────────
 def get_arrival(shift, day):
     """Get arrival time — day override takes priority over default."""
     overrides = arrivals_data.get("overrides", {})
     return overrides.get(day, {}).get(shift) or arrivals_data.get("defaults", {}).get(shift, "")
+
+# ── Debug connection test ──────────────────────────────────────────────────────
+def test_connection():
     try:
         sheets = get_sheets()
         sheets["staff"].update_acell("B1", "connection_test")
@@ -129,7 +140,11 @@ def load_all():
     if arrivals_raw is None:
         arrivals_raw = {"defaults": DEFAULT_ARRIVAL_TIMES, "overrides": {}}
 
-    return staff_dict, avail, sched, req, arrivals_raw
+    # grid schedule
+    grid_raw = read_cell(sheets["grid"], "A1")
+    if grid_raw is None: grid_raw = {}
+
+    return staff_dict, avail, sched, req, arrivals_raw, grid_raw
 
 def save_staff(data):
     get_sheets()["staff"].update_acell("A1", json.dumps(data))
@@ -151,9 +166,13 @@ def save_arrivals(data):
     get_sheets()["arrivals"].update_acell("A1", json.dumps(data))
     load_all.clear()
 
+def save_grid(data):
+    get_sheets()["grid"].update_acell("A1", json.dumps(data))
+    load_all.clear()
+
 # ── Load ───────────────────────────────────────────────────────────────────────
 try:
-    staff_dict, avail_data, schedule, REQUIRED, arrivals_data = load_all()
+    staff_dict, avail_data, schedule, REQUIRED, arrivals_data, grid_data = load_all()
     staff_list = list(staff_dict.keys())
 except Exception as e:
     st.error(f"Could not connect to Google Sheets: {e}")
@@ -301,8 +320,8 @@ for col, label, value in zip([c1,c2,c3,c4],
 
 st.markdown("---")
 
-tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs([
-    "📅 Weekly Schedule","✏️ Assign Shifts",
+tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs([
+    "📅 Weekly Schedule","✏️ Assign Shifts","📋 Grid Schedule",
     "🙋 Availability","👥 Manage Staff","📤 Export","⚙️ Settings"
 ])
 
@@ -425,9 +444,121 @@ with tab2:
             st.success("Schedule cleared!"); st.rerun()
 
 # ════════════════════════════════════════════
+# ════════════════════════════════════════════
+# TAB 3 — Grid Schedule
+# ════════════════════════════════════════════
+DAY_ROLES     = ["—", "Day", "Day Closer", "Day Trainee", "Day Hostess", "Off"]
+EVENING_ROLES = ["—", "Evening", "Evening Closer 1", "Evening Closer 2",
+                 "Evening Bartender", "Evening Trainee", "Evening Hostess",
+                 "Evening Expo", "Evening Busser (optional)", "Off"]
+
+with tab3:
+    st.markdown("### 📋 Grid Schedule")
+    st.caption("Assign each staff member a Day and Evening role for each day. Select Off to leave unassigned.")
+
+    if not staff_list:
+        st.warning("No staff added yet.")
+    else:
+        # Work from a local copy we can mutate
+        grid = {n: grid_data.get(n, {d: {"day": "Off", "eve": "Off"} for d in DAYS})
+                for n in sorted(staff_list)}
+        for name in grid:
+            for day in DAYS:
+                if day not in grid[name]:
+                    grid[name][day] = {"day": "Off", "eve": "Off"}
+
+        # Header
+        header_cols = st.columns([2] + [1]*7)
+        header_cols[0].markdown("**Staff Member**")
+        for di, day in enumerate(DAYS):
+            header_cols[di+1].markdown(f"**{day[:3]}**")
+        st.markdown("---")
+
+        # One row per staff member
+        changed = False
+        for name in sorted(staff_list):
+            row_cols = st.columns([2] + [1]*7)
+            row_cols[0].markdown(f"**{name.split()[0]}**")
+            for di, day in enumerate(DAYS):
+                with row_cols[di+1]:
+                    cur_day = grid[name][day].get("day", "Off")
+                    cur_eve = grid[name][day].get("eve", "Off")
+
+                    # Day dropdown
+                    day_idx = DAY_ROLES.index(cur_day) if cur_day in DAY_ROLES else 0
+                    new_day = st.selectbox(
+                        f"D", DAY_ROLES, index=day_idx,
+                        key=f"grid_{name}_{day}_day",
+                        label_visibility="collapsed"
+                    )
+                    # Evening dropdown
+                    eve_idx = EVENING_ROLES.index(cur_eve) if cur_eve in EVENING_ROLES else 0
+                    new_eve = st.selectbox(
+                        f"E", EVENING_ROLES, index=eve_idx,
+                        key=f"grid_{name}_{day}_eve",
+                        label_visibility="collapsed"
+                    )
+
+                    if new_day != cur_day or new_eve != cur_eve:
+                        grid[name][day]["day"] = new_day
+                        grid[name][day]["eve"] = new_eve
+                        changed = True
+
+            st.markdown("")
+
+        st.markdown("---")
+        col_save, col_clear = st.columns(2)
+
+        with col_save:
+            if st.button("💾 Save Grid Schedule", key="save_grid_btn"):
+                # Save grid to Google Sheets
+                save_grid(grid)
+
+                # Also sync into the main schedule structure
+                for d in DAYS:
+                    for s in SHIFTS:
+                        schedule[d][s] = []
+                for name, days in grid.items():
+                    for day, roles in days.items():
+                        for role_key in ["day", "eve"]:
+                            role = roles.get(role_key, "Off")
+                            if role and role != "Off" and role in SHIFTS:
+                                if name not in schedule[day][role]:
+                                    schedule[day][role].append(name)
+                save_schedule(schedule)
+                st.success("✓ Grid schedule saved!")
+                st.rerun()
+
+        with col_clear:
+            if st.button("🗑️ Clear Grid", key="clear_grid_btn"):
+                empty = {n: {d: {"day": "Off", "eve": "Off"} for d in DAYS} for n in staff_list}
+                save_grid(empty)
+                st.success("✓ Grid cleared!"); st.rerun()
+
+        # Quick summary below
+        st.markdown("---")
+        st.markdown("### This Week at a Glance")
+        summary_cols = st.columns(7)
+        for di, day in enumerate(DAYS):
+            with summary_cols[di]:
+                st.markdown(f"**{day[:3]}**")
+                day_assigned = [(n, grid[n][day]["day"]) for n in sorted(staff_list)
+                    if grid.get(n,{}).get(day,{}).get("day","Off") != "Off"]
+                eve_assigned = [(n, grid[n][day]["eve"]) for n in sorted(staff_list)
+                    if grid.get(n,{}).get(day,{}).get("eve","Off") != "Off"]
+                st.markdown(f"<small style='color:#c9a84c'>☀️ Day ({len(day_assigned)})</small>", unsafe_allow_html=True)
+                for n, role in day_assigned:
+                    short_role = role.replace("Day","").strip() or "Day"
+                    st.markdown(f"<small style='color:#ddd'>{n.split()[0]} <span style='color:#888'>— {short_role}</span></small>", unsafe_allow_html=True)
+                st.markdown(f"<small style='color:#7a8fff'>🌙 Eve ({len(eve_assigned)})</small>", unsafe_allow_html=True)
+                for n, role in eve_assigned:
+                    short_role = role.replace("Evening","").strip() or "Eve"
+                    st.markdown(f"<small style='color:#ddd'>{n.split()[0]} <span style='color:#888'>— {short_role}</span></small>", unsafe_allow_html=True)
+
+# ════════════════════════════════════════════
 # TAB 3 — Availability
 # ════════════════════════════════════════════
-with tab3:
+with tab4:
     st.markdown("### Staff Unavailability")
     st.caption("Check the shifts a staff member **cannot** work. Unchecked = available.")
     if not staff_list:
@@ -482,9 +613,9 @@ with tab3:
             st.rerun()
 
 # ════════════════════════════════════════════
-# TAB 4 — Manage Staff
+# TAB 5 — Manage Staff
 # ════════════════════════════════════════════
-with tab4:
+with tab5:
     st.markdown("### Manage Staff")
     m1, m2 = st.columns(2)
 
@@ -546,9 +677,9 @@ with tab4:
         st.info("No staff added yet.")
 
 # ════════════════════════════════════════════
-# TAB 5 — Export
+# TAB 6 — Export
 # ════════════════════════════════════════════
-with tab5:
+with tab6:
     st.markdown("### Export Schedule")
 
     rows = []
@@ -642,9 +773,9 @@ with tab5:
             st.info(f"ℹ️ These staff have no email on file: {', '.join(emails_without)}")
 
 # ════════════════════════════════════════════
-# TAB 6 — Settings
+# TAB 7 — Settings
 # ════════════════════════════════════════════
-with tab6:
+with tab7:
     st.markdown("### Shift Slot Settings")
     s1, s2 = st.columns(2)
     updated_required = {}
